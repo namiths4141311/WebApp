@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lilydale Rail Trail</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 1000;
+      font-family: sans-serif;
+    }
+    #ui label {
+      display: block;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+
+    #legend {
+      position: absolute;
+      top: 150px;
+      left: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 400px;
+      overflow-y: auto;
+      z-index: 1000;
+      font-size: 13px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      border: 1px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="ui">
+    <label><input type="checkbox" id="chkTiles" checked> Show 3D Tiles</label>
+    <label><input type="checkbox" id="chkRailway" checked> Show Rail Trail</label>
+    <label><input type="checkbox" id="chkWaypoints" checked> Show Waypoints</label>
+  </div>
+  <div id="legend">
+    <strong>Waypoints Legend</strong>
+  </div>
+
+  <script type="module">
+    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJhMWVmNjk4My0zM2I4LTQ1NzItOGZlYy0xODcyYzU1N2RiZTUiLCJpZCI6MzQxMDEwLCJpYXQiOjE3NTc3NzQzMjR9.JG4NNXmabHDFr2EuZwKTIBlNAz3sha6KVyDOOzBAxhw";
+
+    const viewer = new Cesium.Viewer("cesiumContainer");
+
+    let tileset, dataRailway, dataWayPoints;
+
+    const categoryColors = {
+      "Car park": Cesium.Color.BLUE,
+      "Picnic table": Cesium.Color.GREEN,
+      "Bridge": Cesium.Color.BROWN,
+      "Cafe Penny Olive Sourdough": Cesium.Color.PINK,
+      "Carriage Cafe": Cesium.Color.RED,
+      "Cog Cafe": Cesium.Color.ORANGE,
+      "Historical Information": Cesium.Color.YELLOW,
+      "Home Hotel": Cesium.Color.PURPLE,
+      "Information": Cesium.Color.LIGHTBLUE,
+      "Long Wooden Bridge": Cesium.Color.DARKORANGE,
+      "Old Killara Station": Cesium.Color.LIME,
+      "Old Launching Place Station": Cesium.Color.DARKGREEN,
+      "Old Mt Evelyn Station": Cesium.Color.MAGENTA,
+      "Old Seville Station": Cesium.Color.DARKRED,
+      "Old Wandin Station": Cesium.Color.NAVY,
+      "Old Wesburn Station": Cesium.Color.TEAL,
+      "Old Woori Yallock Station": Cesium.Color.CYAN,
+      "Playground": Cesium.Color.VIOLET,
+      "Tunnel": Cesium.Color.DARKGRAY,
+      "Upper Yarra Museum": Cesium.Color.ROYALBLUE,
+      "Toilet (wheelchair accessible)": Cesium.Color.AQUA,
+      "Toilet": Cesium.Color.GRAY,
+      "Water (drinking tap)": Cesium.Color.DEEPSKYBLUE
+    };
+
+    async function getWeather(lat, lon) {
+      const apiKey = "060d7d054d9757b3d9820f22f1308ed6";
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        return data;
+      } catch (err) {
+        console.error("Weather API error", err);
+        return null;
+      }
+    }
+
+    async function init() {
+      try {
+        tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+        viewer.scene.primitives.add(tileset);
+
+        const railwayResource = await Cesium.IonResource.fromAssetId(3716366);
+        dataRailway = await Cesium.GeoJsonDataSource.load(railwayResource);
+        await viewer.dataSources.add(dataRailway);
+        dataRailway.entities.values.forEach(entity => {
+          if (entity.polyline) {
+            entity.polyline.material = Cesium.Color.WHITE;
+            entity.polyline.width = 9;
+            entity.polyline.clampToGround = true;
+          }
+        });
+
+        const wayPointsResource = await Cesium.IonResource.fromAssetId(3716369);
+        dataWayPoints = await Cesium.GeoJsonDataSource.load(wayPointsResource, {markerSize: 0, markerSymbol: undefined});
+        await viewer.dataSources.add(dataWayPoints);
+
+        dataWayPoints.entities.values.forEach(entity => {
+          const name = entity.properties.Name.getValue();
+          const color = categoryColors[name] || Cesium.Color.WHITE;
+
+          entity.point = new Cesium.PointGraphics({
+            pixelSize: 10,
+            color: color,
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 1
+          });
+
+          entity.label = new Cesium.LabelGraphics({
+            text: name,
+            font: "12px sans-serif",
+            fillColor: Cesium.Color.WHITE,
+            pixelOffset: new Cesium.Cartesian2(10, -10),
+            showBackground: true
+          });
+        });
+
+        await viewer.zoomTo(dataRailway);
+
+        const legendDiv = document.getElementById("legend");
+        for (const category in categoryColors) {
+          const item = document.createElement("div");
+          item.className = "legend-item";
+
+          const colorBox = document.createElement("div");
+          colorBox.className = "legend-color";
+          colorBox.style.backgroundColor = categoryColors[category].toCssColorString();
+
+          const label = document.createElement("span");
+          label.textContent = category;
+
+          item.appendChild(colorBox);
+          item.appendChild(label);
+          legendDiv.appendChild(item);
+        }
+
+        for (const entity of dataWayPoints.entities.values) {
+          const position = entity.position.getValue(Cesium.JulianDate.now());
+          const carto = Cesium.Cartographic.fromCartesian(position);
+          const lat = Cesium.Math.toDegrees(carto.latitude);
+          const lon = Cesium.Math.toDegrees(carto.longitude);
+
+          getWeather(lat, lon).then(weather => {
+            if (weather) {
+              const name = entity.properties.Name.getValue();
+              const weatherText = `${weather.main.temp}°C, ${weather.weather[0].description}`;
+              entity.label.text = `${name}\n${weatherText}`;
+            }
+          });
+        }
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    init();
+
+    document.getElementById("chkTiles").addEventListener("change", e => { if (tileset) tileset.show = e.target.checked; });
+    document.getElementById("chkRailway").addEventListener("change", e => { if (dataRailway) dataRailway.show = e.target.checked; });
+    document.getElementById("chkWaypoints").addEventListener("change", e => { 
+      if (dataWayPoints) dataWayPoints.show = e.target.checked; 
+      document.getElementById("legend").style.display = e.target.checked ? "block" : "none";
+    });
+
+  </script>
+</body>
+</html>
